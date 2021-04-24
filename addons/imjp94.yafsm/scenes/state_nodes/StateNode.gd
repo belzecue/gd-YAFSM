@@ -1,6 +1,7 @@
 tool
 extends "res://addons/imjp94.yafsm/scenes/flowchart/FlowChartNode.gd"
 const State = preload("../../src/states/State.gd")
+const StateMachine = preload("../../src/states/StateMachine.gd")
 
 signal name_edit_entered(new_name) # Emits when focused exit or Enter pressed
 
@@ -10,10 +11,8 @@ var undo_redo
 
 var state setget set_state
 
-var _to_free
 
 func _init():
-	_to_free = []
 	set_state(State.new("State"))
 
 func _ready():
@@ -22,18 +21,21 @@ func _ready():
 	name_edit.connect("text_entered", self, "_on_NameEdit_text_entered")
 	set_process_input(false) # _input only required when name_edit enabled to check mouse click outside
 
-func _gui_input(event):
-	if event is InputEventMouseButton:
-		if event.doubleclick:
-			enable_name_edit(true)
-			accept_event()
+func _draw():
+	if state is StateMachine:
+		if selected:
+			draw_style_box(get_stylebox("nested_focus", "StateNode"), Rect2(Vector2.ZERO, rect_size))
+		else:
+			draw_style_box(get_stylebox("nested_normal", "StateNode"), Rect2(Vector2.ZERO, rect_size))
+	else:
+		._draw()
 
 func _input(event):
 	if event is InputEventMouseButton:
 		if event.pressed:
 			# Detect click outside rect
 			if get_focus_owner() == name_edit:
-				var local_event = name_edit.make_input_local(event)
+				var local_event = make_input_local(event)
 				if not name_edit.get_rect().has_point(local_event.position):
 					name_edit.release_focus()
 
@@ -41,16 +43,21 @@ func enable_name_edit(v):
 	if v:
 		set_process_input(true)
 		name_edit.editable = true
+		name_edit.selecting_enabled = true
 		name_edit.mouse_filter = MOUSE_FILTER_PASS
+		mouse_default_cursor_shape = CURSOR_IBEAM
 		name_edit.grab_focus()
 	else:
 		set_process_input(false)
 		name_edit.editable = false
+		name_edit.selecting_enabled = false
 		name_edit.mouse_filter = MOUSE_FILTER_IGNORE
+		mouse_default_cursor_shape = CURSOR_ARROW
 		name_edit.release_focus()
 
 func _on_state_name_changed(new_name):
 	name_edit.text = new_name
+	rect_size.x = 0 # Force reset horizontal size
 
 func _on_state_changed(new_state):
 	if state:

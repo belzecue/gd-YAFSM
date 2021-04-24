@@ -10,6 +10,10 @@ const StateMachineEditor = preload("scenes/StateMachineEditor.tscn")
 const TransitionInspector = preload("scenes/transition_editors/TransitionInspector.gd")
 const StateInspector = preload("scenes/state_nodes/StateInspector.gd")
 
+const StackPlayerIcon = preload("assets/icons/stack_player_icon.png")
+const StateMachinePlayerIcon = preload("assets/icons/state_machine_player_icon.png")
+const StateMachineIcon = preload("assets/icons/state_machine_icon.png")
+
 var state_machine_editor = StateMachineEditor.instance()
 var transition_inspector = TransitionInspector.new()
 var state_inspector = StateInspector.new()
@@ -22,12 +26,9 @@ func _enter_tree():
 	editor_selection = get_editor_interface().get_selection()
 	editor_selection.connect("selection_changed", self, "_on_EditorSelection_selection_changed")
 	var editor_base_control = get_editor_interface().get_base_control()
-	var node_icon = editor_base_control.get_icon("Node", "EditorIcons")
-	var control_icon = editor_base_control.get_icon("Control", "EditorIcons")
-	var resource_icon = editor_base_control.get_icon("ResourcePreloader", "EditorIcons")
-	add_custom_type("StackPlayer", "Node", StackPlayer, node_icon)
-	add_custom_type("StateMachinePlayer", "Node", StateMachinePlayer, node_icon)
-	add_custom_type("StateMachine", "Resource", StateMachine, resource_icon)
+	add_custom_type("StackPlayer", "Node", StackPlayer, StackPlayerIcon)
+	add_custom_type("StateMachinePlayer", "Node", StateMachinePlayer, StateMachinePlayerIcon)
+	add_custom_type("StateMachine", "Resource", StateMachine, StateMachineIcon)
 
 	state_machine_editor.selection_stylebox.bg_color = editor_base_control.get_color("box_selection_fill_color", "Editor")
 	state_machine_editor.selection_stylebox.border_color = editor_base_control.get_color("box_selection_stroke_color", "Editor")
@@ -38,10 +39,12 @@ func _enter_tree():
 	state_machine_editor.condition_visibility.texture_pressed = editor_base_control.get_icon("GuiVisibilityVisible", "EditorIcons")
 	state_machine_editor.condition_visibility.texture_normal = editor_base_control.get_icon("GuiVisibilityHidden", "EditorIcons")
 	state_machine_editor.editor_accent_color = editor_base_control.get_color("accent_color", "Editor")
+	state_machine_editor.current_layer.editor_accent_color = state_machine_editor.editor_accent_color
 	state_machine_editor.transition_arrow_icon = editor_base_control.get_icon("TransitionImmediateBig", "EditorIcons")
 	state_machine_editor.connect("inspector_changed", self, "_on_inspector_changed")
 	state_machine_editor.connect("node_selected", self, "_on_StateMachineEditor_node_selected")
 	state_machine_editor.connect("node_deselected", self, "_on_StateMachineEditor_node_deselected")
+	state_machine_editor.connect("debug_mode_changed", self, "_on_StateMachineEditor_debug_mode_changed")
 	# Force anti-alias for default font, so rotated text will looks smoother
 	var font = editor_base_control.get_font("main", "EditorFonts")
 	font.use_filter = true
@@ -58,6 +61,11 @@ func _exit_tree():
 func handles(object):
 	if object is StateMachine:
 		return true
+	if object is StateMachinePlayer:
+		if object.get_class() == "ScriptEditorDebuggerInspectedObject":
+			set_focused_object(object)
+			state_machine_editor.debug_mode = true
+			return false
 	return false
 
 func edit(object):
@@ -89,10 +97,14 @@ func _on_focused_object_changed(new_obj):
 		show_state_machine_editor()
 		var state_machine
 		if focused_object is StateMachinePlayer:
-			state_machine = focused_object.state_machine
+			if focused_object.get_class() == "ScriptEditorDebuggerInspectedObject":
+				state_machine = focused_object.get("Members/state_machine")
+			else:
+				state_machine = focused_object.state_machine
 			state_machine_editor.state_machine_player = focused_object
 		elif focused_object is StateMachine:
 			state_machine = focused_object
+			state_machine_editor.state_machine_player = null
 		state_machine_editor.state_machine = state_machine
 	else:
 		hide_state_machine_editor()
@@ -103,6 +115,8 @@ func _on_inspector_changed(property):
 func _on_StateMachineEditor_node_selected(node):
 	var to_inspect
 	if "state" in node:
+		if node.state is StateMachine: # Ignore, inspect state machine will trigger edit()
+			return
 		to_inspect = node.state
 	elif "transition" in node:
 		to_inspect = node.transition
@@ -110,6 +124,13 @@ func _on_StateMachineEditor_node_selected(node):
 
 func _on_StateMachineEditor_node_deselected(node):
 	get_editor_interface().inspect_object(state_machine_editor.state_machine)
+
+func _on_StateMachineEditor_debug_mode_changed(new_debug_mode):
+	if not new_debug_mode:
+		state_machine_editor.debug_mode = false
+		state_machine_editor.state_machine_player = null
+		set_focused_object(null)
+		hide_state_machine_editor()
 
 func set_focused_object(obj):
 	if focused_object != obj:
